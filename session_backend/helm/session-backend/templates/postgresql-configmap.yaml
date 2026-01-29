@@ -1,0 +1,14 @@
+{{- if .Values.postgresql.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "session-backend.postgresql.fullname" . }}-init
+  labels:
+    {{- include "session-backend.labels" . | nindent 4 }}
+    app.kubernetes.io/component: database
+data:
+  {{- range $key, $value := .Values.postgresql.primary.initdb.scripts }}
+  {{ $key }}: |
+    {{- $value | nindent 4 }}
+  {{- end }}
+{{- end }}

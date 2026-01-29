@@ -1,0 +1,14 @@
+"""Pydantic models for the {{ name }} API."""
+
+from typing import Dict, List, Optional, Any
+from pydantic import BaseModel
+
+
+class PromptRequest(BaseModel):
+    """Request model for agent prompts."""
+
+    prompt: str
+    """The prompt to send to the agent."""
+
+    metadata: Optional[Dict[str, Any]] = None
+    """Optional metadata to include with the request."""

@@ -1,0 +1,223 @@
+# Helm Values Configuration for {{ name }}
+
+This document describes all the configurable values for the {{ name }} Helm chart. Use these values to customize your deployment.
+
+## Quick Reference
+
+To customize the deployment:
+
+1. Edit the `values.yaml` file directly, or
+2. Create a custom values file with your overrides, or
+3. Pass values using the `--set` flag during helm install/upgrade
+
+Example:
+```bash
+helm upgrade --install {{ name }} ./deployment/helm \
+  --namespace your-namespace \
+  --create-namespace \
+  --set replicaCount=3 \
+  --set image.tag=v1.0 \
+  --set autoscaling.enabled=true
+```
+
+## Available Configuration Parameters
+
+### Core Settings
+
+| Parameter | Description | Default |
+|-----------|-------------|---------|
+| `replicaCount` | Number of pod replicas to deploy | `1` |
+| `nameOverride` | Override the name of the chart | `""` |
+| `fullnameOverride` | Override the full name of the chart | `""` |
+
+### Image Configuration
+
+| Parameter | Description | Default |
+|-----------|-------------|---------|
+| `image.repository` | Container image repository | `your-registry/{{ name }}` |
+| `image.tag` | Container image tag | `"latest"` |
+| `image.pullPolicy` | Image pull policy | `IfNotPresent` |
+
+### Service Account
+
+| Parameter | Description | Default |
+|-----------|-------------|---------|
+| `serviceAccount.create` | Create a service account | `true` |
+| `serviceAccount.annotations` | Annotations for the service account | `{}` |
+| `serviceAccount.name` | Name of the service account | `""` (auto-generated) |
+
+### Security Settings
+
+| Parameter | Description | Default |
+|-----------|-------------|---------|
+| `podSecurityContext` | Pod security context | `{}` |
+| `securityContext` | Container security context | `{}` |
+| `podAnnotations` | Annotations for pods | `{}` |
+
+### Networking
+
+| Parameter | Description | Default |
+|-----------|-------------|---------|
+| `service.type` | Kubernetes service type | `ClusterIP` |
+| `service.port` | Service port | `80` |
+| `service.targetPort` | Container port to target | `8000` |
+
+### Ingress Configuration
+
+| Parameter | Description | Default |
+|-----------|-------------|---------|
+| `ingress.enabled` | Enable ingress resource | `false` |
+| `ingress.className` | Ingress class name | `""` |
+| `ingress.annotations` | Ingress annotations | `{}` |
+| `ingress.hosts` | Ingress host configuration | `[]` |
+| `ingress.tls` | TLS configuration for ingress | `[]` |
+
+Example ingress configuration:
+
+```yaml
+ingress:
+  enabled: true
+  className: alb
+  annotations:
+    kubernetes.io/ingress.class: alb
+    alb.ingress.kubernetes.io/scheme: internet-facing
+    alb.ingress.kubernetes.io/target-type: ip
+  hosts:
+    - host: {{ name }}.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls:
+    - hosts:
+        - {{ name }}.example.com
+```
+
+### Resource Management
+
+| Parameter | Description | Default |
+|-----------|-------------|---------|
+| `resources.limits.cpu` | CPU resource limit | `1` |
+| `resources.limits.memory` | Memory resource limit | `512Mi` |
+| `resources.requests.cpu` | CPU resource request | `500m` |
+| `resources.requests.memory` | Memory resource request | `256Mi` |
+
+### Autoscaling
+
+| Parameter | Description | Default |
+|-----------|-------------|---------|
+| `autoscaling.enabled` | Enable Horizontal Pod Autoscaler | `false` |
+| `autoscaling.minReplicas` | Minimum number of replicas | `1` |
+| `autoscaling.maxReplicas` | Maximum number of replicas | `10` |
+| `autoscaling.targetCPUUtilizationPercentage` | Target CPU utilization percentage | `80` |
+| `autoscaling.targetMemoryUtilizationPercentage` | Target memory utilization percentage | `80` |
+
+### Node Assignment
+
+| Parameter | Description | Default |
+|-----------|-------------|---------|
+| `nodeSelector` | Node labels for pod assignment | `{}` |
+| `tolerations` | Tolerations for pod assignment | `[]` |
+| `affinity` | Affinity rules for pod assignment | `{}` |
+
+### High Availability & Reliability
+
+| Parameter | Description | Default |
+|-----------|-------------|---------|
+| `topologySpreadConstraints` | Pod topology spread constraints | `[]` |
+| `podDisruptionBudget.enabled` | Enable PodDisruptionBudget | `false` |
+| `podDisruptionBudget.minAvailable` | Minimum pods that must be available | `1` |
+
+Example topology spread for availability zone distribution:
+
+```yaml
+topologySpreadConstraints:
+  - maxSkew: 1
+    topologyKey: topology.kubernetes.io/zone
+    whenUnsatisfiable: ScheduleAnyway
+    labelSelector:
+      matchLabels:
+        app.kubernetes.io/name: {{ name }}
+```
+
+### Environment Variables
+
+| Parameter | Description | Default |
+|-----------|-------------|---------|
+| `env` | Environment variables for the container | `[]` |
+
+Example environment variable configuration:
+
+```yaml
+env:
+  - name: LOG_LEVEL
+    value: "INFO"
+  - name: BEDROCK_MODEL_ID
+    value: "amazon.titan-text-express-v1"
+```
+
+## Using with AWS Bedrock
+
+To configure your agent to use AWS Bedrock:
+
+1. Create a service account with pod identity for AWS Bedrock access:
+   ```bash
+   strands-cli create-pod-identity bedrock-sa arn:aws:iam::aws:policy/AmazonBedrockFullAccess --namespace your-namespace
+   ```
+
+2. Configure the Helm chart to use this service account:
+   ```bash
+   helm upgrade --install {{ name }} ./deployment/helm \
+     --namespace your-namespace \
+     --set serviceAccount.name=bedrock-sa \
+     --set serviceAccount.create=false
+   ```
+
+## Common Configurations
+
+### Development Environment
+
+```yaml
+replicaCount: 1
+image:
+  tag: "dev"
+resources:
+  limits:
+    cpu: 500m
+    memory: 256Mi
+  requests:
+    cpu: 100m
+    memory: 128Mi
+env:
+  - name: LOG_LEVEL
+    value: "DEBUG"
+```
+
+### Production Environment
+
+```yaml
+replicaCount: 3
+image:
+  tag: "stable"
+resources:
+  limits:
+    cpu: 2
+    memory: 1Gi
+  requests:
+    cpu: 1
+    memory: 512Mi
+autoscaling:
+  enabled: true
+  minReplicas: 3
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 70
+topologySpreadConstraints:
+  - maxSkew: 1
+    topologyKey: topology.kubernetes.io/zone
+    whenUnsatisfiable: ScheduleAnyway
+    labelSelector:
+      matchLabels:
+        app.kubernetes.io/name: {{ name }}
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 2
+```

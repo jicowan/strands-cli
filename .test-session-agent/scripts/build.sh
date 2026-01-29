@@ -1,0 +1,29 @@
+#!/bin/bash
+set -e
+
+# Build the Docker image for test-session-agent
+#
+# Usage:
+#   ./scripts/build.sh [tag]
+#
+# Arguments:
+#   tag: Optional tag for the image (default: latest)
+
+# Get the tag from command line or use default
+TAG=${1:-latest}
+
+# Set the image repository name
+REPO="test-session-agent"
+
+# Build the Docker image
+echo "Building Docker image ${REPO}:${TAG}..."
+docker build -t ${REPO}:${TAG} -f deployment/docker/Dockerfile .
+
+echo "Done! Image built: ${REPO}:${TAG}"
+echo ""
+echo "To push this image to a registry:"
+echo "  docker tag ${REPO}:${TAG} your-registry/${REPO}:${TAG}"
+echo "  docker push your-registry/${REPO}:${TAG}"
+echo ""
+echo "Or use the push script:"
+echo "  ./scripts/push.sh [registry] [tag]"

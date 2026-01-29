@@ -1,0 +1,16 @@
+apiVersion: v2
+name: session-backend
+description: A Helm chart for deploying Session Backend API with PostgreSQL
+type: application
+version: 0.1.0
+appVersion: "1.0.0"
+keywords:
+  - session-management
+  - strands
+  - postgresql
+  - fastapi
+maintainers:
+  - name: Strands Team
+home: https://strandsagents.com
+sources:
+  - https://github.com/your-org/strands-cli

@@ -1,0 +1,33 @@
+{{- if .Values.sessionBackend.autoscaling.enabled }}
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ include "session-backend.fullname" . }}
+  labels:
+    {{- include "session-backend.labels" . | nindent 4 }}
+    app.kubernetes.io/component: api
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ include "session-backend.fullname" . }}
+  minReplicas: {{ .Values.sessionBackend.autoscaling.minReplicas }}
+  maxReplicas: {{ .Values.sessionBackend.autoscaling.maxReplicas }}
+  metrics:
+    {{- if .Values.sessionBackend.autoscaling.targetCPUUtilizationPercentage }}
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: {{ .Values.sessionBackend.autoscaling.targetCPUUtilizationPercentage }}
+    {{- end }}
+    {{- if .Values.sessionBackend.autoscaling.targetMemoryUtilizationPercentage }}
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: {{ .Values.sessionBackend.autoscaling.targetMemoryUtilizationPercentage }}
+    {{- end }}
+{{- end }}

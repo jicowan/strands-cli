@@ -1,0 +1,46 @@
+version: '3'
+services:
+  agent:
+{% if use_image %}
+    image: {{ image_uri }}
+{% else %}
+    build:
+      context: {{ project_dir }}
+      dockerfile: deployment/docker/Dockerfile
+{% endif %}
+    ports:
+      - "{{ agent_port }}:8000"
+    volumes:
+      - {{ project_dir }}/agent:/app/agent
+      - {{ project_dir }}/api:/app/api
+      - type: bind
+        source: {{ AWS_HOME_DIR }}
+        target: /home/appuser/.aws
+        read_only: true
+    restart: {{ restart_policy }}
+    environment:
+      - PORT=8000
+      # Pass through AWS environment variables if they exist
+      - AWS_ACCESS_KEY_ID
+      - AWS_SECRET_ACCESS_KEY
+      - AWS_SESSION_TOKEN
+      - AWS_REGION
+      - AWS_DEFAULT_REGION
+{% if aws_profile %}
+      - AWS_PROFILE={{ aws_profile }}
+{% else %}
+      - AWS_PROFILE
+{% endif %}
+{% if include_ui %}
+  ui:
+    build:
+      context: {{ ui_template_dir }}
+      dockerfile: Dockerfile
+    ports:
+      - "{{ ui_port }}:8501"
+    environment:
+      - AGENT_URL=http://agent:8000
+    depends_on:
+      - agent
+    restart: {{ restart_policy }}
+{% endif %}

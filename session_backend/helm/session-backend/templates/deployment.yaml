@@ -1,0 +1,82 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "session-backend.fullname" . }}
+  labels:
+    {{- include "session-backend.labels" . | nindent 4 }}
+    app.kubernetes.io/component: api
+spec:
+  {{- if not .Values.sessionBackend.autoscaling.enabled }}
+  replicas: {{ .Values.sessionBackend.replicaCount }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "session-backend.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: api
+  template:
+    metadata:
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/secret.yaml") . | sha256sum }}
+        {{- with .Values.sessionBackend.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      labels:
+        {{- include "session-backend.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: api
+    spec:
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "session-backend.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.sessionBackend.podSecurityContext | nindent 8 }}
+      initContainers:
+        - name: wait-for-postgresql
+          image: busybox:1.35
+          command:
+            - sh
+            - -c
+            - |
+              until nc -z {{ include "session-backend.postgresql.host" . }} {{ include "session-backend.postgresql.port" . }}; do
+                echo "Waiting for PostgreSQL..."
+                sleep 2
+              done
+              echo "PostgreSQL is ready!"
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+      containers:
+        - name: {{ .Chart.Name }}
+          securityContext:
+            {{- toYaml .Values.sessionBackend.securityContext | nindent 12 }}
+          image: "{{ .Values.sessionBackend.image.repository }}:{{ .Values.sessionBackend.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.sessionBackend.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.sessionBackend.service.targetPort }}
+              protocol: TCP
+          env:
+            {{- toYaml .Values.sessionBackend.env | nindent 12 }}
+          livenessProbe:
+            {{- toYaml .Values.sessionBackend.livenessProbe | nindent 12 }}
+          readinessProbe:
+            {{- toYaml .Values.sessionBackend.readinessProbe | nindent 12 }}
+          resources:
+            {{- toYaml .Values.sessionBackend.resources | nindent 12 }}
+      {{- with .Values.sessionBackend.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.sessionBackend.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.sessionBackend.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

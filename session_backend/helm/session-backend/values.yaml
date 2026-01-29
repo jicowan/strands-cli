@@ -1,0 +1,299 @@
+# Default values for session-backend
+# This is a YAML-formatted file.
+# Declare variables to be passed into your templates.
+
+# Global settings
+global:
+  # Image pull secrets for private registries
+  imagePullSecrets: []
+
+# Session Backend API configuration
+sessionBackend:
+  # Number of replicas
+  replicaCount: 2
+  
+  image:
+    repository: session-backend-api
+    pullPolicy: IfNotPresent
+    tag: "latest"
+  
+  # Service configuration
+  service:
+    type: ClusterIP
+    port: 8001
+    targetPort: 8001
+    annotations: {}
+  
+  # Resource limits and requests
+  resources:
+    limits:
+      cpu: 500m
+      memory: 512Mi
+    requests:
+      cpu: 250m
+      memory: 256Mi
+  
+  # Autoscaling configuration
+  autoscaling:
+    enabled: false
+    minReplicas: 2
+    maxReplicas: 10
+    targetCPUUtilizationPercentage: 80
+    targetMemoryUtilizationPercentage: 80
+  
+  # Health check configuration
+  livenessProbe:
+    httpGet:
+      path: /health
+      port: 8001
+    initialDelaySeconds: 30
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 3
+  
+  readinessProbe:
+    httpGet:
+      path: /health/db
+      port: 8001
+    initialDelaySeconds: 10
+    periodSeconds: 5
+    timeoutSeconds: 3
+    failureThreshold: 3
+  
+  # Environment variables
+  env:
+    - name: LOG_LEVEL
+      value: "INFO"
+    - name: POSTGRES_HOST
+      value: "session-backend-postgresql"
+    - name: POSTGRES_PORT
+      value: "5432"
+    - name: POSTGRES_DB
+      value: "sessions"
+    - name: POSTGRES_USER
+      valueFrom:
+        secretKeyRef:
+          name: session-backend-postgresql
+          key: username
+    - name: POSTGRES_PASSWORD
+      valueFrom:
+        secretKeyRef:
+          name: session-backend-postgresql
+          key: password
+  
+  # Pod annotations
+  podAnnotations: {}
+  
+  # Pod security context
+  podSecurityContext:
+    runAsNonRoot: true
+    runAsUser: 1000
+    fsGroup: 1000
+  
+  # Container security context
+  securityContext:
+    allowPrivilegeEscalation: false
+    capabilities:
+      drop:
+        - ALL
+    readOnlyRootFilesystem: false
+  
+  # Node selector
+  nodeSelector: {}
+  
+  # Tolerations
+  tolerations: []
+  
+  # Affinity rules
+  affinity: {}
+
+# PostgreSQL configuration
+postgresql:
+  enabled: true
+  
+  # PostgreSQL image
+  image:
+    repository: postgres
+    tag: "15"
+    pullPolicy: IfNotPresent
+  
+  # Authentication
+  auth:
+    username: postgres
+    password: "changeme"  # CHANGE THIS IN PRODUCTION
+    database: sessions
+  
+  # Primary configuration
+  primary:
+    # Persistence
+    persistence:
+      enabled: true
+      storageClass: ""  # Use default storage class
+      size: 10Gi
+      accessModes:
+        - ReadWriteOnce
+    
+    # Resource limits
+    resources:
+      limits:
+        cpu: 1000m
+        memory: 1Gi
+      requests:
+        cpu: 500m
+        memory: 512Mi
+    
+    # Pod security context
+    podSecurityContext:
+      fsGroup: 999
+    
+    # Container security context
+    securityContext:
+      runAsUser: 999
+      runAsNonRoot: true
+    
+    # Init DB scripts
+    initdb:
+      scripts:
+        init.sql: |
+          -- Create session type enum
+          CREATE TYPE session_type_enum AS ENUM ('AGENT');
+
+          -- Create sessions table (Strands-compatible schema)
+          CREATE TABLE IF NOT EXISTS sessions (
+              session_id VARCHAR(255) PRIMARY KEY,
+              session_type session_type_enum NOT NULL DEFAULT 'AGENT',
+              created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+              updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+          );
+
+          -- Create session_agents table
+          CREATE TABLE IF NOT EXISTS session_agents (
+              id SERIAL PRIMARY KEY,
+              session_id VARCHAR(255) NOT NULL,
+              agent_id VARCHAR(255) NOT NULL,
+              state JSONB NOT NULL,
+              conversation_manager_state JSONB NOT NULL,
+              internal_state JSONB NOT NULL DEFAULT '{}',
+              created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+              updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+              
+              CONSTRAINT fk_session_agents_session_id 
+                  FOREIGN KEY (session_id) REFERENCES sessions(session_id) ON DELETE CASCADE,
+              
+              CONSTRAINT uk_session_agents_session_agent 
+                  UNIQUE (session_id, agent_id)
+          );
+
+          -- Create session_messages table
+          CREATE TABLE IF NOT EXISTS session_messages (
+              id SERIAL PRIMARY KEY,
+              session_id VARCHAR(255) NOT NULL,
+              agent_id VARCHAR(255) NOT NULL,
+              message_id INTEGER NOT NULL,
+              message JSONB NOT NULL,
+              redact_message JSONB,
+              created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+              updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+              
+              CONSTRAINT fk_session_messages_session_agent 
+                  FOREIGN KEY (session_id, agent_id) 
+                  REFERENCES session_agents(session_id, agent_id) ON DELETE CASCADE,
+              
+              CONSTRAINT uk_session_messages_session_agent_message 
+                  UNIQUE (session_id, agent_id, message_id)
+          );
+
+          -- Create indexes for performance
+          CREATE INDEX IF NOT EXISTS idx_session_agents_session_id ON session_agents(session_id);
+          CREATE INDEX IF NOT EXISTS idx_session_messages_session_agent ON session_messages(session_id, agent_id);
+          CREATE INDEX IF NOT EXISTS idx_session_messages_created_at ON session_messages(created_at);
+          CREATE INDEX IF NOT EXISTS idx_messages_pagination ON session_messages(session_id, agent_id, message_id);
+
+          -- Create function to update updated_at timestamp
+          CREATE OR REPLACE FUNCTION update_updated_at_column()
+          RETURNS TRIGGER AS $$
+          BEGIN
+              NEW.updated_at = CURRENT_TIMESTAMP;
+              RETURN NEW;
+          END;
+          $$ language 'plpgsql';
+
+          -- Create triggers to automatically update updated_at timestamps
+          CREATE TRIGGER update_sessions_updated_at 
+              BEFORE UPDATE ON sessions 
+              FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+          CREATE TRIGGER update_session_agents_updated_at 
+              BEFORE UPDATE ON session_agents 
+              FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+          CREATE TRIGGER update_session_messages_updated_at 
+              BEFORE UPDATE ON session_messages 
+              FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+  
+  # Service configuration
+  service:
+    type: ClusterIP
+    port: 5432
+  
+  # Metrics (optional)
+  metrics:
+    enabled: false
+
+# Ingress configuration (optional)
+ingress:
+  enabled: false
+  className: "nginx"
+  annotations:
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+  hosts:
+    - host: session-backend.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls:
+    - secretName: session-backend-tls
+      hosts:
+        - session-backend.example.com
+
+# Service Account
+serviceAccount:
+  create: true
+  annotations: {}
+  name: ""
+
+# Pod Disruption Budget
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 1
+
+# Network Policy (optional)
+networkPolicy:
+  enabled: false
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+      - podSelector:
+          matchLabels:
+            app.kubernetes.io/name: strands-agent
+      ports:
+        - protocol: TCP
+          port: 8001
+  egress:
+    - to:
+      - podSelector:
+          matchLabels:
+            app.kubernetes.io/name: postgresql
+      ports:
+        - protocol: TCP
+          port: 5432
+    - to:
+      - namespaceSelector: {}
+      ports:
+        - protocol: TCP
+          port: 53
+        - protocol: UDP
+          port: 53

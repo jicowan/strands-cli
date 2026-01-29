@@ -1,0 +1,121 @@
+# -- Number of replicas to deploy
+replicaCount: {% if values and values.replicaCount is defined %}{{ values.replicaCount }}{% else %}1{% endif %}
+
+image:
+  # -- Image repository for the agent container
+  repository: {% if values and values.image and values.image.repository %}{{ values.image.repository }}{% else %}your-registry/{{ name }}{% endif %}
+  # -- Image pull policy
+  pullPolicy: {% if values and values.image and values.image.pullPolicy %}{{ values.image.pullPolicy }}{% else %}IfNotPresent{% endif %}
+  # -- Image tag (default: latest)
+  tag: {% if values and values.image and values.image.tag %}{{ values.image.tag }}{% else %}"latest"{% endif %}
+
+# -- Override the name of the chart
+nameOverride: ""
+# -- Override the full name of the chart
+fullnameOverride: ""
+
+serviceAccount:
+  # -- Specifies whether a service account should be created
+  create: {% if values and values.serviceAccount and values.serviceAccount.create is defined %}{{ values.serviceAccount.create | lower }}{% else %}true{% endif %}
+  # -- Annotations to add to the service account
+  annotations: {% if values and values.serviceAccount and values.serviceAccount.annotations %}{{ values.serviceAccount.annotations }}{% else %}{}{% endif %}
+  # -- The name of the service account to use.
+  # If not set and create is true, a name is generated using the fullname template.
+  # When using with pod identities for AWS Bedrock access, set this to your service account name.
+  name: {% if values and values.serviceAccount and values.serviceAccount.name %}{{ values.serviceAccount.name | tojson }}{% else %}""{% endif %}
+
+# -- Annotations to add to the pods
+podAnnotations: {}
+# -- Pod security context
+podSecurityContext: {}
+# -- Container security context
+securityContext: {}
+
+service:
+  # -- Kubernetes Service type (ClusterIP, NodePort, LoadBalancer)
+  type: {% if values and values.service and values.service.type %}{{ values.service.type }}{% else %}ClusterIP{% endif %}
+  # -- Service port
+  port: {% if values and values.service and values.service.port %}{{ values.service.port }}{% else %}80{% endif %}
+  # -- Container port to target
+  targetPort: {% if values and values.service and values.service.targetPort %}{{ values.service.targetPort }}{% else %}8000{% endif %}
+
+ingress:
+  # -- Enable ingress resource
+  enabled: {% if values and values.ingress and values.ingress.enabled is defined %}{{ values.ingress.enabled | lower }}{% else %}false{% endif %}
+  # -- Ingress class name (e.g., "nginx" or "alb")
+  className: {% if values and values.ingress and values.ingress.className %}{{ values.ingress.className | tojson }}{% else %}""{% endif %}
+  # -- Ingress annotations
+  annotations: {% if values and values.ingress and values.ingress.annotations %}{{ values.ingress.annotations }}{% else %}{}{% endif %}
+    # Example annotations for AWS ALB Controller:
+    # kubernetes.io/ingress.class: alb
+    # alb.ingress.kubernetes.io/scheme: internet-facing
+    # alb.ingress.kubernetes.io/target-type: ip
+    # alb.ingress.kubernetes.io/listen-ports: '[{"HTTPS": 443}]'
+    # alb.ingress.kubernetes.io/ssl-policy: ELBSecurityPolicy-TLS-1-2-Ext-2018-06
+  # -- Ingress hosts configuration
+  hosts: {% if values and values.ingress and values.ingress.hosts %}{{ values.ingress.hosts }}{% else %}[]{% endif %}
+    # Example host configuration:
+    # - host: {{ name }}.example.com
+    #   paths:
+    #     - path: /
+    #       pathType: Prefix
+  # -- TLS configuration for ingress
+  tls: {% if values and values.ingress and values.ingress.tls %}{{ values.ingress.tls }}{% else %}[]{% endif %}
+    # Example TLS configuration:
+    # - hosts:
+    #     - {{ name }}.example.com
+
+resources:
+  limits:
+    # -- CPU resource limit
+    cpu: {% if values and values.resources and values.resources.limits and values.resources.limits.cpu is defined %}{{ values.resources.limits.cpu }}{% else %}1{% endif %}
+    # -- Memory resource limit
+    memory: {% if values and values.resources and values.resources.limits and values.resources.limits.memory %}{{ values.resources.limits.memory }}{% else %}512Mi{% endif %}
+  requests:
+    # -- CPU resource request
+    cpu: {% if values and values.resources and values.resources.requests and values.resources.requests.cpu %}{{ values.resources.requests.cpu }}{% else %}500m{% endif %}
+    # -- Memory resource request
+    memory: {% if values and values.resources and values.resources.requests and values.resources.requests.memory %}{{ values.resources.requests.memory }}{% else %}256Mi{% endif %}
+
+autoscaling:
+  # -- Enable Horizontal Pod Autoscaler
+  enabled: {% if values and values.autoscaling and values.autoscaling.enabled is defined %}{{ values.autoscaling.enabled | lower }}{% else %}false{% endif %}
+  # -- Minimum number of replicas
+  minReplicas: {% if values and values.autoscaling and values.autoscaling.minReplicas is defined %}{{ values.autoscaling.minReplicas }}{% else %}1{% endif %}
+  # -- Maximum number of replicas
+  maxReplicas: {% if values and values.autoscaling and values.autoscaling.maxReplicas is defined %}{{ values.autoscaling.maxReplicas }}{% else %}10{% endif %}
+  # -- Target CPU utilization percentage for autoscaling
+  targetCPUUtilizationPercentage: {% if values and values.autoscaling and values.autoscaling.targetCPUUtilizationPercentage is defined %}{{ values.autoscaling.targetCPUUtilizationPercentage }}{% else %}80{% endif %}
+  # -- Target memory utilization percentage for autoscaling
+  targetMemoryUtilizationPercentage: {% if values and values.autoscaling and values.autoscaling.targetMemoryUtilizationPercentage is defined %}{{ values.autoscaling.targetMemoryUtilizationPercentage }}{% else %}80{% endif %}
+
+# -- Node selector for pod assignment
+nodeSelector: {% if values and values.nodeSelector %}{{ values.nodeSelector }}{% else %}{}{% endif %}
+# -- Tolerations for pod assignment
+tolerations: {% if values and values.tolerations %}{{ values.tolerations }}{% else %}[]{% endif %}
+# -- Affinity for pod assignment
+affinity: {% if values and values.affinity %}{{ values.affinity }}{% else %}{}{% endif %}
+
+# -- Pod topology spread constraints
+# Example for high availability across availability zones:
+# - maxSkew: 1
+#   topologyKey: topology.kubernetes.io/zone
+#   whenUnsatisfiable: ScheduleAnyway
+#   labelSelector:
+#     matchLabels:
+#       app.kubernetes.io/name: {{ name }}
+topologySpreadConstraints: {% if values and values.topologySpreadConstraints %}{{ values.topologySpreadConstraints }}{% else %}[]{% endif %}
+
+podDisruptionBudget:
+  # -- Enable pod disruption budget
+  enabled: {% if values and values.podDisruptionBudget and values.podDisruptionBudget.enabled is defined %}{{ values.podDisruptionBudget.enabled | lower }}{% else %}false{% endif %}
+  # -- Minimum number of pods that must be available during disruptions
+  minAvailable: {% if values and values.podDisruptionBudget and values.podDisruptionBudget.minAvailable is defined %}{{ values.podDisruptionBudget.minAvailable }}{% else %}1{% endif %}
+
+# -- Environment variables for the container
+env: {% if values and values.env %}{{ values.env }}{% else %}[]{% endif %}
+  # Example environment variables:
+  # - name: LOG_LEVEL
+  #   value: "INFO"
+  # - name: BEDROCK_MODEL_ID
+  #   value: "amazon.titan-text-express-v1"

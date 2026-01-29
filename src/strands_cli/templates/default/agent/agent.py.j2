@@ -1,0 +1,48 @@
+"""{{ class_name }} agent implementation."""
+
+from typing import Dict, List, Any, Optional
+
+from strands import Agent
+
+from agent.prompts import SYSTEM_PROMPT
+from agent.tools import register_tools
+from strands.agent.conversation_manager import SlidingWindowConversationManager
+
+
+def create_agent() -> Agent:
+    """Create and configure a Strands agent.
+
+    Returns:
+        Agent: Configured Strands agent.
+    """
+    # Register any custom tools
+    tools = register_tools()
+
+    if additional_tools:
+        tools = tools + additional_tools
+    
+    conversation_manager = SlidingWindowConversationManager(
+        window_size=20,
+        should_truncate_results=True,
+    )
+
+    # Create the agent with the system prompt and tools
+    agent = Agent(system_prompt=SYSTEM_PROMPT, tools=tools,
+                conversation_manager=conversation_manager)
+
+    return agent
+
+
+def process_request(prompt: str) -> str:
+    """Process a user request with the Strands agent.
+
+    Args:
+        prompt: The user prompt to process.
+
+    Returns:
+        str: The agent's response.
+    """
+    agent = create_agent()
+    response = agent(prompt)
+
+    return str(response)

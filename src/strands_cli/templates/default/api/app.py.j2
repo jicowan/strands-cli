@@ -1,0 +1,104 @@
+"""FastAPI application for the {{ name }} agent."""
+
+import os
+from collections.abc import Callable
+from queue import Queue
+from threading import Thread
+from typing import Iterator, Dict, Optional, Any
+from uuid import uuid4
+
+import uvicorn
+from fastapi import FastAPI, Request, Response, HTTPException
+from fastapi.responses import StreamingResponse, PlainTextResponse
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
+from strands import Agent, tool
+
+from agent.agent import create_agent
+from api.models import PromptRequest
+
+app = FastAPI(title="{{ name }}", description="{{ description }}")
+
+# Add CORS middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # For production, specify exact origins
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
+@app.get('/health')
+def health_check():
+    """Health check endpoint for the load balancer."""
+    return {"status": "healthy"}
+
+# Define the ready_to_summarize tool
+@tool
+def ready_to_summarize():
+    """Tool that is called by the agent right before summarizing the response."""
+    return "Ok - continue providing the summary!"
+
+# Create the global agent with the ready_to_summarize tool
+global_agent = create_agent(additional_tools=[ready_to_summarize])
+
+@app.post('/process')
+async def process_prompt(request: PromptRequest):
+    """Process a prompt with the agent."""
+    prompt = request.prompt
+
+    if not prompt:
+        raise HTTPException(status_code=400, detail="No prompt provided")
+
+    try:
+        response = global_agent(prompt)
+        content = str(response)
+        return PlainTextResponse(content=content)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+async def run_agent_and_stream_response(prompt: str):
+    """Stream agent responses incrementally.
+
+    Args:
+        prompt: The user prompt to process.
+
+    Yields:
+        str: Chunks of the agent's response.
+    """
+    # Send initial message to help client detect the start of streaming
+    yield "Starting response stream...\n\n"
+
+    try:
+        # Use the global agent for streaming
+        async for item in global_agent.stream_async(prompt):
+            # Stream all data
+            if "data" in item:
+                yield item['data']
+    except Exception as e:
+        yield f"\n\nError during streaming: {str(e)}"
+
+
+@app.post('/process-streaming')
+async def process_prompt_streaming(request: PromptRequest):
+    """Stream the agent's response."""
+    try:
+        prompt = request.prompt
+
+        if not prompt:
+            raise HTTPException(status_code=400, detail="No prompt provided")
+
+        return StreamingResponse(
+            run_agent_and_stream_response(prompt),
+            media_type="text/plain"
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+if __name__ == '__main__':
+    # Get port from environment variable or default to 8000
+    port = int(os.environ.get('PORT', 8000))
+    uvicorn.run(app, host='0.0.0.0', port=port)

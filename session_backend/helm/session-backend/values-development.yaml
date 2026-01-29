@@ -1,0 +1,71 @@
+# Development values for session-backend
+# Minimal resource configuration for local/dev environments
+
+sessionBackend:
+  replicaCount: 1
+  
+  image:
+    repository: session-backend-api
+    tag: "latest"
+    pullPolicy: Always
+  
+  resources:
+    limits:
+      cpu: 250m
+      memory: 256Mi
+    requests:
+      cpu: 100m
+      memory: 128Mi
+  
+  autoscaling:
+    enabled: false
+  
+  env:
+    - name: LOG_LEVEL
+      value: "DEBUG"
+    - name: POSTGRES_HOST
+      value: "session-backend-postgresql"
+    - name: POSTGRES_PORT
+      value: "5432"
+    - name: POSTGRES_DB
+      value: "sessions"
+    - name: POSTGRES_USER
+      valueFrom:
+        secretKeyRef:
+          name: session-backend-postgresql
+          key: username
+    - name: POSTGRES_PASSWORD
+      valueFrom:
+        secretKeyRef:
+          name: session-backend-postgresql
+          key: password
+
+postgresql:
+  enabled: true
+  
+  auth:
+    username: postgres
+    password: "devpassword"
+    database: sessions
+  
+  primary:
+    persistence:
+      enabled: true
+      size: 5Gi
+    
+    resources:
+      limits:
+        cpu: 500m
+        memory: 512Mi
+      requests:
+        cpu: 250m
+        memory: 256Mi
+
+ingress:
+  enabled: false
+
+podDisruptionBudget:
+  enabled: false
+
+networkPolicy:
+  enabled: false

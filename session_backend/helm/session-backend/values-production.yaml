@@ -1,0 +1,136 @@
+# Production values for session-backend
+# Override default values for production deployment
+
+sessionBackend:
+  replicaCount: 3
+  
+  image:
+    repository: your-registry.example.com/session-backend-api
+    tag: "v1.0.0"
+    pullPolicy: IfNotPresent
+  
+  resources:
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+    requests:
+      cpu: 500m
+      memory: 512Mi
+  
+  autoscaling:
+    enabled: true
+    minReplicas: 3
+    maxReplicas: 10
+    targetCPUUtilizationPercentage: 70
+    targetMemoryUtilizationPercentage: 80
+  
+  env:
+    - name: LOG_LEVEL
+      value: "INFO"
+    - name: POSTGRES_HOST
+      value: "session-backend-postgresql"
+    - name: POSTGRES_PORT
+      value: "5432"
+    - name: POSTGRES_DB
+      value: "sessions"
+    - name: POSTGRES_USER
+      valueFrom:
+        secretKeyRef:
+          name: session-backend-postgresql
+          key: username
+    - name: POSTGRES_PASSWORD
+      valueFrom:
+        secretKeyRef:
+          name: session-backend-postgresql
+          key: password
+  
+  # Anti-affinity to spread pods across nodes
+  affinity:
+    podAntiAffinity:
+      preferredDuringSchedulingIgnoredDuringExecution:
+        - weight: 100
+          podAffinityTerm:
+            labelSelector:
+              matchExpressions:
+                - key: app.kubernetes.io/name
+                  operator: In
+                  values:
+                    - session-backend
+                - key: app.kubernetes.io/component
+                  operator: In
+                  values:
+                    - api
+            topologyKey: kubernetes.io/hostname
+
+postgresql:
+  enabled: true
+  
+  auth:
+    username: postgres
+    password: "CHANGE-THIS-SECURE-PASSWORD"  # Use a strong password
+    database: sessions
+  
+  primary:
+    persistence:
+      enabled: true
+      storageClass: "gp3"  # AWS EBS gp3 for better performance
+      size: 50Gi
+    
+    resources:
+      limits:
+        cpu: 2000m
+        memory: 2Gi
+      requests:
+        cpu: 1000m
+        memory: 1Gi
+
+ingress:
+  enabled: true
+  className: "nginx"
+  annotations:
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/rate-limit: "100"
+    nginx.ingress.kubernetes.io/proxy-body-size: "10m"
+  hosts:
+    - host: session-backend.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls:
+    - secretName: session-backend-tls
+      hosts:
+        - session-backend.example.com
+
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 2
+
+networkPolicy:
+  enabled: true
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+      - namespaceSelector:
+          matchLabels:
+            name: strands-agents
+      ports:
+        - protocol: TCP
+          port: 8001
+  egress:
+    - to:
+      - podSelector:
+          matchLabels:
+            app.kubernetes.io/component: database
+      ports:
+        - protocol: TCP
+          port: 5432
+    - to:
+      - namespaceSelector: {}
+      ports:
+        - protocol: TCP
+          port: 53
+        - protocol: UDP
+          port: 53
