@@ -121,3 +121,8 @@ dmypy.json
 
 # MCP settings
 .mcp.json
+
+# Kiro
+.kiro/
+.test-session-agent/
+
